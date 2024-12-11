@@ -1,13 +1,12 @@
-use crate::constants::ACCOUNT_TO_LISTEN;
-use crate::qx_builder::QueryBuilder;
-use crate::qx_sender::QuerySender;
-
-use async_trait::async_trait;
-use near_event_listener::EventLog;
-use near_jsonrpc_client::JsonRpcClient;
 use near_jsonrpc_primitives::types::transactions::RpcTransactionResponse;
 use near_primitives::views::FinalExecutionOutcomeViewEnum;
-use std::sync::Arc;
+use serde_json::json;
+use near_sdk::AccountId;
+
+use near_tx_qx_builder::NearQxSender;
+use async_trait::async_trait;
+use near_event_listener::EventLog;
+use crate::constants::ACCOUNT_TO_LISTEN;
 
 #[async_trait]
 pub trait TransactionProcessor: Send + Sync {
@@ -29,7 +28,8 @@ pub trait TransactionProcessor: Send + Sync {
     // Default methods to all the implementations to synchronize
     async fn get_stage(
         &self,
-        tx_sender: Arc<JsonRpcClient>,
+        rpc_url: String,
+        account_id_sender: AccountId,
         event_data: EventLog,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         println!("Get Stage");
@@ -38,15 +38,14 @@ pub trait TransactionProcessor: Send + Sync {
             .as_u64()
             .unwrap_or_default();
 
-        let query = QueryBuilder::new(ACCOUNT_TO_LISTEN.to_string())
-            .with_method_name("get_stage")
-            .with_args(serde_json::json!({
-                "start_time": start_time,
-            }))
-            .build();
+        let query = NearQxSender::builder(&rpc_url)
+            .account_sender(&account_id_sender.as_str())
+            .account_receiver(ACCOUNT_TO_LISTEN) 
+            .method_name("get_stage")
+            .args(json!({"start_time": start_time}))
+            .build()?;
 
-        let query_sender = QuerySender::new(tx_sender);
-        let stage = query_sender.send_query(query).await?;
+        let stage = query.send_query().await?;
 
         Ok(stage)
     }
